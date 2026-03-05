@@ -1,0 +1,12 @@
+# ── Core web framework ────────────────────────────────────────────────────────
+flask>=3.0.0
+werkzeug>=3.0.0        # password hashing + WSGI utilities
+
+# ── Data & exports ────────────────────────────────────────────────────────────
+pandas>=1.5.0          # data manipulation, CSV/XLSX export
+openpyxl>=3.0.0        # Excel (.xlsx) file writing
+reportlab>=3.6.0       # PDF report generation
+
+# ── Dev / build only (not needed to run the app) ──────────────────────────────
+# pyinstaller>=6.0.0   # uncomment to build a standalone .exe
+# pytest>=7.0.0        # uncomment to run tests

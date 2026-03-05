@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ settings.theme }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>💸 Expense Tracker Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-icon">💸</span>
+    <div>
+      <div class="brand-name">Expense Tracker Pro</div>
+      <div class="brand-user">👤 {{ username }}</div>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <a class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')"><span class="nav-icon">📊</span><span>Dashboard</span></a>
+    <a class="nav-item" data-tab="add" onclick="switchTab('add')"><span class="nav-icon">➕</span><span>Add Expense</span></a>
+    <a class="nav-item" data-tab="expenses" onclick="switchTab('expenses')"><span class="nav-icon">📋</span><span>Expenses</span></a>
+    <a class="nav-item" data-tab="charts" onclick="switchTab('charts')"><span class="nav-icon">📈</span><span>Charts</span></a>
+    <a class="nav-item" data-tab="history" onclick="switchTab('history')"><span class="nav-icon">📅</span><span>History</span></a>
+    <a class="nav-item" data-tab="budget" onclick="switchTab('budget')"><span class="nav-icon">🎯</span><span>Budget</span></a>
+    <a class="nav-item" data-tab="recurring" onclick="switchTab('recurring')"><span class="nav-icon">🔁</span><span>Recurring</span></a>
+    <a class="nav-item" data-tab="settings" onclick="switchTab('settings')"><span class="nav-icon">⚙️</span><span>Settings</span></a>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">
+      <span id="themeIcon">{{ '☀️' if settings.theme == 'dark' else '🌙' }}</span>
+      <span id="themeLabel">{{ 'Light Mode' if settings.theme == 'dark' else 'Dark Mode' }}</span>
+    </button>
+    <a href="/logout" class="logout-btn">🚪 Sign Out</a>
+  </div>
+</aside>
+
+<main class="main-content">
+  <header class="topbar">
+    <button class="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+    <div class="topbar-title" id="topbarTitle">Dashboard</div>
+    <div class="topbar-right">
+      <select id="currencySelect" onchange="changeCurrency(this.value)" title="Currency">
+        {% for c in currencies %}<option value="{{ c }}" {% if c == settings.currency %}selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select>
+      <div class="topbar-date" id="topbarDate"></div>
+      <button class="ai-fab" onclick="toggleChat()" title="AI Assistant">🤖</button>
+    </div>
+  </header>
+
+  <!-- DASHBOARD -->
+  <section class="tab active" id="tab-dashboard">
+    <div class="kpi-grid" id="kpiGrid"></div>
+    <div class="dash-grid">
+      <div class="card"><div class="card-header"><h3>This Month by Category</h3></div><div id="catBreakdown" class="cat-list pad"></div></div>
+      <div class="card"><div class="card-header"><h3>6-Month Trend</h3></div><div class="pad"><canvas id="trendChart" height="200"></canvas></div></div>
+    </div>
+    <div class="card"><div class="card-header"><h3>Recent Expenses</h3></div><div id="recentList" class="recent-list pad"></div></div>
+  </section>
+
+  <!-- ADD -->
+  <section class="tab" id="tab-add">
+    <div class="two-col">
+      <div class="card">
+        <div class="card-header"><h3>Add New Expense</h3></div>
+        <form id="addForm" class="form-grid" onsubmit="submitExpense(event)">
+          <div class="form-group"><label>Amount</label>
+            <div class="input-prefix"><span id="addSym">₹</span><input type="number" id="addAmount" step="0.01" min="0.01" placeholder="0.00" required></div></div>
+          <div class="form-group"><label>Description</label><input type="text" id="addDesc" placeholder="What did you spend on?" required></div>
+          <div class="form-group"><label>Category</label>
+            <select id="addCat">{% for cat in categories %}<option value="{{ cat }}">{{ cat_icons[cat] }} {{ cat }}</option>{% endfor %}</select></div>
+          <div class="form-group"><label>Date</label><input type="date" id="addDate" required></div>
+          <div class="form-group full"><label>Notes <span class="optional">(optional)</span></label><input type="text" id="addNotes" placeholder="Any extra details..."></div>
+          <div class="form-actions full">
+            <button type="submit" class="btn btn-primary">➕ Add Expense</button>
+            <button type="button" class="btn btn-ghost" onclick="resetAddForm()">Clear</button>
+          </div>
+        </form>
+      </div>
+      <div class="card"><div class="card-header"><h3>Recent Entries</h3></div><div id="addRecentList" class="recent-list pad"></div></div>
+    </div>
+  </section>
+
+  <!-- EXPENSES -->
+  <section class="tab" id="tab-expenses">
+    <div class="card">
+      <div class="card-header">
+        <h3>All Expenses</h3>
+        <div class="filter-bar">
+          <input type="text" id="searchInput" placeholder="🔍 Search..." oninput="loadExpenses()">
+          <select id="filterCat" onchange="loadExpenses()">
+            <option value="All">All Categories</option>
+            {% for cat in categories %}<option value="{{ cat }}">{{ cat_icons[cat] }} {{ cat }}</option>{% endfor %}
+          </select>
+          <div class="export-group">
+            <button class="btn btn-sm btn-success" onclick="exportData('csv')">📤 CSV</button>
+            <button class="btn btn-sm btn-info" onclick="exportData('xlsx')">📊 XLSX</button>
+            <button class="btn btn-sm btn-warning" onclick="exportData('pdf')">📄 PDF</button>
+            <button class="btn btn-sm btn-danger" onclick="bulkDelete()">🗑️ Delete</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="expTable">
+          <thead><tr>
+            <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+            <th onclick="sortTable('date')">Date ↕</th>
+            <th onclick="sortTable('description')">Description ↕</th>
+            <th onclick="sortTable('category')">Category ↕</th>
+            <th onclick="sortTable('amount')">Amount ↕</th>
+            <th>Notes</th><th>Del</th>
+          </tr></thead>
+          <tbody id="expBody"></tbody>
+        </table>
+      </div>
+      <div class="table-footer" id="tableFooter"></div>
+    </div>
+  </section>
+
+  <!-- CHARTS -->
+  <section class="tab" id="tab-charts">
+    <div class="card">
+      <div class="card-header">
+        <h3>Charts & Analytics</h3>
+        <div class="filter-bar">
+          <select id="chartType" onchange="renderCharts()">
+            <option value="pie">🥧 Category Pie</option>
+            <option value="bar-monthly">📊 Monthly Trend</option>
+            <option value="bar-cat">📊 Category Compare</option>
+            <option value="line-daily">📈 Daily Spending</option>
+            <option value="donut">🍩 Top 5 Donut</option>
+          </select>
+          <select id="chartYear" onchange="renderCharts()"></select>
+          <select id="chartMonth" onchange="renderCharts()">
+            <option value="">All Year</option>
+            <option value="01">January</option><option value="02">February</option>
+            <option value="03">March</option><option value="04">April</option>
+            <option value="05">May</option><option value="06">June</option>
+            <option value="07">July</option><option value="08">August</option>
+            <option value="09">September</option><option value="10">October</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+      </div>
+      <div class="chart-container"><canvas id="mainChart"></canvas></div>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section class="tab" id="tab-history">
+    <div class="card">
+      <div class="card-header">
+        <h3>Expense History</h3>
+        <div class="filter-bar">
+          <select id="histMode" onchange="loadHistory()"><option value="month">By Month</option><option value="year">By Year</option></select>
+          <select id="histYear" onchange="loadHistory()"></select>
+          <select id="histMonth" onchange="loadHistory()">
+            <option value="01">January</option><option value="02">February</option><option value="03">March</option><option value="04">April</option>
+            <option value="05">May</option><option value="06">June</option><option value="07">July</option><option value="08">August</option>
+            <option value="09">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option>
+          </select>
+          <button class="btn btn-sm btn-warning" onclick="exportHistoryPDF()">📄 Export PDF</button>
+        </div>
+      </div>
+      <div class="two-col pad">
+        <div><div class="table-wrap"><table id="histTable">
+          <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table></div></div>
+        <div>
+          <h4 style="font-family:'Syne',sans-serif;color:var(--accent);margin-bottom:12px;font-size:13px">Category Summary</h4>
+          <div id="histCatSummary" class="cat-list"></div>
+          <div id="histTotal" class="hist-total"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BUDGET -->
+  <section class="tab" id="tab-budget">
+    <div class="two-col">
+      <div class="card">
+        <div class="card-header"><h3>Set Budget</h3></div>
+        <form class="form-grid" onsubmit="saveBudget(event)">
+          <div class="form-group full"><label>Category</label>
+            <select id="bgtCat">{% for cat in categories %}<option value="{{ cat }}">{{ cat_icons[cat] }} {{ cat }}</option>{% endfor %}</select></div>
+          <div class="form-group full"><label>Monthly Budget</label>
+            <div class="input-prefix"><span id="bgtSym">₹</span><input type="number" id="bgtAmt" min="1" placeholder="5000" required></div></div>
+          <div class="form-actions full">
+            <button type="submit" class="btn btn-primary">💾 Save</button>
+            <button type="button" class="btn btn-danger" onclick="deleteBudget()">🗑️ Delete</button>
+          </div>
+        </form>
+        <div style="padding:0 22px 20px"><label style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">View Month</label>
+          <select id="bgtMonth" onchange="loadBudgets()" style="width:100%"></select></div>
+      </div>
+      <div class="card"><div class="card-header"><h3>Budget vs Spending</h3></div><div id="budgetList" class="budget-list pad"></div></div>
+    </div>
+  </section>
+
+  <!-- RECURRING -->
+  <section class="tab" id="tab-recurring">
+    <div class="two-col">
+      <div class="card">
+        <div class="card-header"><h3>Add Recurring Expense</h3></div>
+        <form class="form-grid" onsubmit="addRecurring(event)">
+          <div class="form-group full"><label>Name</label><input type="text" id="recName" placeholder="e.g. Netflix, Rent..." required></div>
+          <div class="form-group"><label>Amount</label>
+            <div class="input-prefix"><span id="recSym">₹</span><input type="number" id="recAmt" step="0.01" min="0.01" placeholder="0.00" required></div></div>
+          <div class="form-group"><label>Frequency</label>
+            <select id="recFreq"><option>Daily</option><option>Weekly</option><option>Bi-weekly</option><option selected>Monthly</option><option>Yearly</option></select></div>
+          <div class="form-group"><label>Category</label>
+            <select id="recCat">{% for cat in categories %}<option value="{{ cat }}">{{ cat_icons[cat] }} {{ cat }}</option>{% endfor %}</select></div>
+          <div class="form-group"><label>Start Date</label><input type="date" id="recStart" required></div>
+          <div class="form-group full"><label>Notes <span class="optional">(optional)</span></label><input type="text" id="recNotes" placeholder="..."></div>
+          <div class="form-actions full">
+            <button type="submit" class="btn btn-primary">➕ Add</button>
+            <button type="button" class="btn btn-ghost" onclick="applyRecurring()">▶ Apply Due Now</button>
+          </div>
+        </form>
+      </div>
+      <div class="card"><div class="card-header"><h3>Active Rules</h3></div><div id="recurringList" class="recurring-list pad"></div></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="tab" id="tab-settings">
+    <div class="two-col">
+      <div class="card">
+        <div class="card-header"><h3>App Settings</h3></div>
+        <div class="form-grid">
+          <div class="form-group full"><label>Currency</label>
+            <select id="settingCurrency" onchange="changeCurrency(this.value)">
+              {% for c in currencies %}<option value="{{ c }}" {% if c == settings.currency %}selected{% endif %}>{{ c }}</option>{% endfor %}
+            </select></div>
+          <div class="form-group full"><label>Theme</label>
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-ghost" onclick="setTheme('light')" style="flex:1">☀️ Light</button>
+              <button class="btn btn-ghost" onclick="setTheme('dark')" style="flex:1">🌙 Dark</button>
+            </div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>🤖 AI Chatbot Setup</h3>
+        </div>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label>Google Gemini API Key</label>
+            <div style="position:relative">
+              <input type="password" id="apiKeyInput" placeholder="AIza..." value="{{ settings.gemini_key or '' }}" autocomplete="off">
+              <button onclick="toggleKeyVis()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text2);font-size:16px" id="eyeBtn">👁️</button>
+            </div>
+            <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.6">
+              Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com/app/apikey</a><br>
+              Uses <strong style="color:var(--accent)">Gemini 2.0 Flash</strong> · Your key is stored locally, never shared.
+            </div>
+          </div>
+          <div class="form-actions full">
+            <button class="btn btn-primary" onclick="saveApiKey()">💾 Save Key</button>
+            <button class="btn btn-ghost" onclick="testApiKey()">🧪 Test Key</button>
+          </div>
+          <div class="form-group full">
+            <div id="keyStatus" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px"></div>
+          </div>
+          <div class="form-group full" style="background:var(--bg2);border-radius:12px;padding:16px">
+            <div style="font-size:13px;color:var(--text);line-height:1.8">
+              <strong style="color:var(--accent)">What can the AI do?</strong><br>
+              🔍 Analyse your spending patterns<br>
+              💡 Give personalised saving tips<br>
+              📊 Compare months, categories &amp; trends<br>
+              🎯 Advise on budget allocation<br>
+              ❓ Answer any finance question with your real data
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ════════════════ AI CHAT PANEL ════════════════ -->
+<div class="chat-overlay" id="chatOverlay" onclick="toggleChat()"></div>
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-header">
+    <div class="chat-header-left">
+      <div class="chat-avatar">🤖</div>
+      <div>
+        <div class="chat-title">AI Finance Assistant</div>
+        <div class="chat-subtitle" id="chatStatus">Powered by Gemini 2.0 Flash</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="chat-clear-btn" onclick="clearChat()" title="Clear chat">🗑️</button>
+      <button class="chat-close-btn" onclick="toggleChat()">✕</button>
+    </div>
+  </div>
+
+  <div class="chat-messages" id="chatMessages">
+    <div class="chat-welcome">
+      <div class="welcome-icon">✨</div>
+      <div class="welcome-title">Hi {{ username }}! I'm your AI finance assistant.</div>
+      <div class="welcome-sub">I have full access to your expense data. Ask me anything!</div>
+      <div class="suggestions">
+        <button class="suggestion" onclick="sendSuggestion(this)">How much did I spend this month?</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Which category costs me the most?</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Am I over budget anywhere?</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Give me saving tips based on my spending</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Compare my last 3 months</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">What's my biggest expense this year?</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="chat-input-area">
+    <textarea id="chatInput" class="chat-input" placeholder="Ask about your expenses..."
+      rows="1" onkeydown="handleChatKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="chat-send-btn" onclick="sendMessage()" id="sendBtn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+const CAT_COLORS = {{ cat_colors|safe }};
+let allExpenses = [];
+let sortCol = 'date', sortAsc = false;
+let mainChart = null, trendChart = null;
+let currentTheme = '{{ settings.theme }}';
+let currentCurrency = '{{ settings.currency }}';
+let chatHistory = [];
+let chatOpen = false;
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('addDate').value = today();
+  document.getElementById('recStart').value = today();
+  initYearSelects();
+  initBgtMonthSelect();
+  loadDashboard();
+  loadExpenses();
+  loadHistory();
+  loadBudgets();
+  loadRecurring();
+  renderCharts();
+  updateClock();
+  setInterval(updateClock, 30000);
+  updateSymbols();
+});
+
+function today() { return new Date().toISOString().split('T')[0]; }
+function fmt(n) { return currencySymbol(currentCurrency) + Number(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtShort(n) {
+  const s = currencySymbol(currentCurrency);
+  if (n>=1000000) return s+(n/1000000).toFixed(1)+'M';
+  if (n>=1000) return s+(n/1000).toFixed(1)+'K';
+  return s+n.toFixed(0);
+}
+function currencySymbol(k){return{INR:'₹',USD:'$',EUR:'€',GBP:'£',JPY:'¥',CNY:'¥',AUD:'A$',CAD:'C$',CHF:'CHF',SGD:'S$',AED:'AED',SAR:'SAR'}[k]||'₹';}
+function catColor(c){return CAT_COLORS[c]||'#888';}
+function updateClock(){document.getElementById('topbarDate').textContent=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});}
+function toast(msg,type='success'){const el=document.getElementById('toast');el.textContent=msg;el.className='toast show '+type;setTimeout(()=>el.className='toast',3000);}
+
+function updateSymbols() {
+  const s = currencySymbol(currentCurrency);
+  document.getElementById('addSym').textContent = s;
+  document.getElementById('bgtSym').textContent = s;
+  document.getElementById('recSym').textContent = s;
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────
+function toggleTheme(){ setTheme(currentTheme==='light'?'dark':'light'); }
+function setTheme(t){
+  currentTheme=t; document.documentElement.setAttribute('data-theme',t);
+  document.getElementById('themeIcon').textContent=t==='dark'?'☀️':'🌙';
+  document.getElementById('themeLabel').textContent=t==='dark'?'Light Mode':'Dark Mode';
+  fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:t})});
+  setTimeout(renderCharts,100);
+}
+
+// ── Currency ──────────────────────────────────────────────────────────────
+function changeCurrency(val){
+  currentCurrency=val;
+  document.getElementById('currencySelect').value=val;
+  document.getElementById('settingCurrency').value=val;
+  updateSymbols();
+  fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({currency:val})})
+    .then(()=>{loadDashboard();loadExpenses();loadHistory();loadBudgets();loadRecurring();renderCharts();});
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+  const titles={dashboard:'Dashboard',add:'Add Expense',expenses:'All Expenses',charts:'Charts & Analytics',history:'History',budget:'Budget',recurring:'Recurring',settings:'Settings'};
+  document.getElementById('topbarTitle').textContent=titles[name]||name;
+  if(name==='charts')renderCharts();
+  if(name==='dashboard')loadDashboard();
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+// ── Year selects ──────────────────────────────────────────────────────────
+function initYearSelects(){
+  const yr=new Date().getFullYear();
+  ['chartYear','histYear'].forEach(id=>{
+    const sel=document.getElementById(id);
+    for(let y=yr-4;y<=yr+1;y++){const o=document.createElement('option');o.value=y;o.textContent=y;if(y===yr)o.selected=true;sel.appendChild(o);}
+  });
+  const m=String(new Date().getMonth()+1).padStart(2,'0');
+  document.getElementById('histMonth').value=m;
+  document.getElementById('chartMonth').value='';
+}
+function initBgtMonthSelect(){
+  const sel=document.getElementById('bgtMonth');
+  const yr=new Date().getFullYear();
+  for(let y=yr;y>=yr-2;y--){for(let m=12;m>=1;m--){
+    const val=`${y}-${String(m).padStart(2,'0')}`;
+    const label=new Date(y,m-1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+    const o=document.createElement('option');o.value=val;o.textContent=label;sel.appendChild(o);
+  }}
+  sel.value=today().slice(0,7);
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────
+async function loadDashboard(){
+  const d=await fetch('/api/dashboard').then(r=>r.json());
+  const s=currencySymbol(currentCurrency);
+  const kpis=[
+    {label:'Today',value:d.kpis.today,color:'#2D9E6B',icon:'📅'},
+    {label:'This Month',value:d.kpis.month,color:'#58A6FF',icon:'🗓️'},
+    {label:'This Year',value:d.kpis.year,color:'#D29922',icon:'📆'},
+    {label:'Avg / Day',value:d.kpis.avg_day,color:'#E07A5F',icon:'📊'},
+    {label:'Monthly Recurring',value:d.kpis.recurring,color:'#9C6B98',icon:'🔁'},
+  ];
+  document.getElementById('kpiGrid').innerHTML=kpis.map(k=>`
+    <div class="kpi-card" style="--kpi-color:${k.color}">
+      <div class="kpi-icon">${k.icon}</div>
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${s}${Number(k.value).toLocaleString('en-IN',{maximumFractionDigits:0})}</div>
+    </div>`).join('');
+  const total=d.cat_breakdown.reduce((a,b)=>a+b[1],0);
+  document.getElementById('catBreakdown').innerHTML=d.cat_breakdown.slice(0,8).map(([cat,amt])=>{
+    const pct=total?(amt/total*100).toFixed(1):0;
+    return `<div class="cat-row"><span class="cat-name">${cat}</span>
+      <div class="cat-bar-wrap"><div class="cat-bar" style="width:${pct}%;background:${catColor(cat)}"></div></div>
+      <span class="cat-amt">${s}${Number(amt).toLocaleString('en-IN',{maximumFractionDigits:0})} <small>(${pct}%)</small></span></div>`;
+  }).join('')||'<div class="empty">No expenses this month</div>';
+
+  if(trendChart)trendChart.destroy();
+  const ctx=document.getElementById('trendChart').getContext('2d');
+  const isDark=currentTheme==='dark';
+  trendChart=new Chart(ctx,{type:'bar',
+    data:{labels:d.trend.map(t=>t.label),datasets:[{data:d.trend.map(t=>t.amount),
+      backgroundColor:d.trend.map(t=>t.is_current?'#E07A5F':(isDark?'#58A6FF':'#2D6A4F')),
+      borderRadius:6,borderSkipped:false}]},
+    options:{responsive:true,plugins:{legend:{display:false}},
+      scales:{y:{grid:{color:isDark?'#21262D':'#DDD5C5'},ticks:{color:isDark?'#7D8590':'#6B7A6E',callback:v=>fmtShort(v)}},
+        x:{grid:{display:false},ticks:{color:isDark?'#7D8590':'#6B7A6E'}}}}});
+
+  const rec=await fetch('/api/expenses').then(r=>r.json());
+  renderRecentList('recentList',rec.slice(0,6));
+  renderRecentList('addRecentList',rec.slice(0,8));
+}
+
+function renderRecentList(id,items){
+  const s=currencySymbol(currentCurrency);
+  document.getElementById(id).innerHTML=items.length?items.map(e=>`
+    <div class="recent-item">
+      <div class="recent-dot" style="background:${catColor(e.category)}"></div>
+      <div class="recent-info"><div class="recent-desc">${e.description}</div><div class="recent-meta">${e.category} · ${e.date}</div></div>
+      <div class="recent-amt">${s}${Number(e.amount).toLocaleString('en-IN',{maximumFractionDigits:0})}</div>
+    </div>`).join(''):'<div class="empty">No recent expenses</div>';
+}
+
+// ── Add Expense ───────────────────────────────────────────────────────────
+async function submitExpense(e){
+  e.preventDefault();
+  const body={amount:document.getElementById('addAmount').value,description:document.getElementById('addDesc').value,
+    category:document.getElementById('addCat').value,date:document.getElementById('addDate').value,notes:document.getElementById('addNotes').value};
+  const res=await fetch('/api/expenses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res.ok){toast('✅ Expense added!');resetAddForm();loadDashboard();loadExpenses();loadHistory();loadBudgets();}
+  else{toast('❌ Error adding expense','error');}
+}
+function resetAddForm(){document.getElementById('addAmount').value='';document.getElementById('addDesc').value='';document.getElementById('addNotes').value='';document.getElementById('addDate').value=today();}
+
+// ── Expenses ──────────────────────────────────────────────────────────────
+async function loadExpenses(){
+  const cat=document.getElementById('filterCat').value,search=document.getElementById('searchInput').value;
+  allExpenses=await fetch(`/api/expenses?category=${encodeURIComponent(cat)}&search=${encodeURIComponent(search)}`).then(r=>r.json());
+  renderExpTable();
+}
+function renderExpTable(){
+  const s=currencySymbol(currentCurrency);
+  const sorted=[...allExpenses].sort((a,b)=>{let va=a[sortCol]||'',vb=b[sortCol]||'';if(sortCol==='amount'){va=+va;vb=+vb;}return sortAsc?(va>vb?1:-1):(va<vb?1:-1);});
+  let total=0;
+  document.getElementById('expBody').innerHTML=sorted.map(e=>{total+=e.amount;return`<tr>
+    <td><input type="checkbox" class="row-check" value="${e.id}"></td>
+    <td>${e.date}</td><td><span class="desc-pill">${e.description}</span></td>
+    <td><span class="cat-tag" style="--c:${catColor(e.category)}">${e.category}</span></td>
+    <td class="amt-cell">${s}${Number(e.amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    <td class="notes-cell">${e.notes||''}</td>
+    <td><button class="btn-icon" onclick="deleteOne('${e.id}')">🗑️</button></td></tr>`;}).join('')||'<tr><td colspan="7" class="empty-row">No expenses found</td></tr>';
+  document.getElementById('tableFooter').textContent=`${sorted.length} entries  ·  Total: ${s}${total.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+}
+function sortTable(col){sortAsc=sortCol===col?!sortAsc:false;sortCol=col;renderExpTable();}
+function toggleSelectAll(cb){document.querySelectorAll('.row-check').forEach(c=>c.checked=cb.checked);}
+async function deleteOne(id){if(!confirm('Delete this expense?'))return;await fetch(`/api/expenses/${id}`,{method:'DELETE'});toast('🗑️ Deleted');loadExpenses();loadDashboard();}
+async function bulkDelete(){const ids=[...document.querySelectorAll('.row-check:checked')].map(c=>c.value);if(!ids.length){toast('Select rows first','error');return;}if(!confirm(`Delete ${ids.length} expense(s)?`))return;await fetch('/api/expenses/bulk-delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});toast(`🗑️ Deleted ${ids.length}`);loadExpenses();loadDashboard();}
+function exportData(fmt){window.location=`/api/export/${fmt}`;}
+
+// ── Charts ────────────────────────────────────────────────────────────────
+async function renderCharts(){
+  const type=document.getElementById('chartType').value;
+  const year=document.getElementById('chartYear')?.value||new Date().getFullYear();
+  const month=document.getElementById('chartMonth')?.value||'';
+  const data=await fetch(`/api/charts?year=${year}&month=${month}`).then(r=>r.json());
+  if(mainChart)mainChart.destroy();
+  const ctx=document.getElementById('mainChart').getContext('2d');
+  const isDark=currentTheme==='dark';
+  const gridColor=isDark?'#21262D':'#DDD5C5',tickColor=isDark?'#7D8590':'#6B7A6E';
+  const s=currencySymbol(currentCurrency);
+  if(type==='pie'||type==='donut'){
+    const items=type==='donut'?data.cat_totals.slice(0,5):data.cat_totals;
+    mainChart=new Chart(ctx,{type:'doughnut',data:{labels:items.map(i=>i.cat),datasets:[{data:items.map(i=>i.amount),backgroundColor:items.map(i=>i.color),borderWidth:3,borderColor:isDark?'#13191F':'#FDFAF4',hoverOffset:8}]},
+      options:{responsive:true,cutout:type==='donut'?'60%':'40%',plugins:{legend:{position:'right',labels:{color:tickColor,padding:16,font:{size:11}}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${s}${Number(ctx.raw).toLocaleString('en-IN',{maximumFractionDigits:0})}`}}}}});
+  }else if(type==='bar-monthly'){
+    mainChart=new Chart(ctx,{type:'bar',data:{labels:data.monthly.map(m=>m.label),datasets:[{label:'Spending',data:data.monthly.map(m=>m.amount),backgroundColor:data.monthly.map(m=>m.is_current?'#E07A5F':(isDark?'#58A6FF':'#2D6A4F')),borderRadius:6,borderSkipped:false}]},
+      options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{grid:{color:gridColor},ticks:{color:tickColor,callback:v=>fmtShort(v)}},x:{grid:{display:false},ticks:{color:tickColor}}}}});
+  }else if(type==='bar-cat'){
+    const items=data.cat_totals;
+    mainChart=new Chart(ctx,{type:'bar',data:{labels:items.map(i=>i.cat),datasets:[{label:'Amount',data:items.map(i=>i.amount),backgroundColor:items.map(i=>i.color),borderRadius:6,borderSkipped:false}]},
+      options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:gridColor},ticks:{color:tickColor,callback:v=>fmtShort(v)}},y:{grid:{display:false},ticks:{color:tickColor,font:{size:10}}}}}});
+  }else if(type==='line-daily'){
+    mainChart=new Chart(ctx,{type:'line',data:{labels:data.daily.map(d=>d.date.slice(5)),datasets:[{label:'Daily',data:data.daily.map(d=>d.amount),borderColor:isDark?'#58A6FF':'#2D6A4F',backgroundColor:isDark?'rgba(88,166,255,0.1)':'rgba(45,106,79,0.1)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:isDark?'#FF7B72':'#E07A5F'}]},
+      options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{grid:{color:gridColor},ticks:{color:tickColor,callback:v=>fmtShort(v)}},x:{grid:{display:false},ticks:{color:tickColor,maxTicksLimit:12}}}}});
+  }
+}
+
+// ── History ───────────────────────────────────────────────────────────────
+async function loadHistory(){
+  const mode=document.getElementById('histMode').value;
+  const year=document.getElementById('histYear').value;
+  const month=document.getElementById('histMonth').value;
+  const prefix=mode==='month'?`${year}-${month}`:year;
+  const items=await fetch(`/api/expenses?${mode==='month'?'month':'year'}=${prefix}`).then(r=>r.json());
+  const s=currencySymbol(currentCurrency);
+  document.getElementById('histBody').innerHTML=items.map(e=>`<tr><td>${e.date}</td><td>${e.description.slice(0,28)}</td><td><span class="cat-tag" style="--c:${catColor(e.category)}">${e.category}</span></td><td class="amt-cell">${s}${Number(e.amount).toLocaleString('en-IN',{minimumFractionDigits:2})}</td></tr>`).join('')||'<tr><td colspan="4" class="empty-row">No data</td></tr>';
+  const totals={};let grand=0;
+  items.forEach(e=>{totals[e.category]=(totals[e.category]||0)+e.amount;grand+=e.amount;});
+  document.getElementById('histCatSummary').innerHTML=Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>{
+    const pct=grand?(amt/grand*100).toFixed(1):0;
+    return`<div class="cat-row"><span class="cat-name">${cat}</span><div class="cat-bar-wrap"><div class="cat-bar" style="width:${pct}%;background:${catColor(cat)}"></div></div><span class="cat-amt">${s}${Number(amt).toLocaleString('en-IN',{maximumFractionDigits:0})} <small>(${pct}%)</small></span></div>`;
+  }).join('')||'<div class="empty">No data</div>';
+  document.getElementById('histTotal').textContent=`Total: ${s}${grand.toLocaleString('en-IN',{minimumFractionDigits:2})} · ${items.length} entries`;
+}
+function exportHistoryPDF(){const mode=document.getElementById('histMode').value;const year=document.getElementById('histYear').value;const month=document.getElementById('histMonth').value;const period=mode==='month'?`${year}-${month}`:year;window.location=`/api/export/pdf?period=${period}`;}
+
+// ── Budget ────────────────────────────────────────────────────────────────
+async function saveBudget(e){e.preventDefault();const body={category:document.getElementById('bgtCat').value,amount:document.getElementById('bgtAmt').value};await fetch('/api/budgets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});toast('💾 Budget saved!');loadBudgets();}
+async function deleteBudget(){const cat=document.getElementById('bgtCat').value;if(!confirm(`Delete budget for ${cat}?`))return;await fetch(`/api/budgets/${encodeURIComponent(cat)}`,{method:'DELETE'});toast('🗑️ Deleted');loadBudgets();}
+async function loadBudgets(){
+  const month=document.getElementById('bgtMonth').value;
+  const d=await fetch(`/api/budgets?month=${month}`).then(r=>r.json());
+  const s=currencySymbol(currentCurrency);
+  document.getElementById('budgetList').innerHTML=d.budgets.map(b=>{
+    const sc=b.pct<75?'#2D9E6B':b.pct<100?'#D4870A':'#C0392B';
+    const label=b.pct<75?'✓ On Track':b.pct<100?'⚠ Warning':'✗ Over Budget';
+    return`<div class="budget-item"><div class="budget-row1"><span class="cat-tag" style="--c:${b.color}">${b.category}</span><span class="budget-status" style="color:${sc}">${label}</span></div>
+      <div class="budget-bar-bg"><div class="budget-bar" style="width:${Math.min(b.pct,100)}%;background:${sc}"></div></div>
+      <div class="budget-row2"><span>Spent: ${s}${Number(b.spent).toLocaleString('en-IN',{maximumFractionDigits:0})}</span><span>Budget: ${s}${Number(b.budget).toLocaleString('en-IN',{maximumFractionDigits:0})}</span><span style="color:${sc}">${b.remaining>=0?s+Number(b.remaining).toLocaleString('en-IN',{maximumFractionDigits:0})+' left':'Over by '+s+Number(-b.remaining).toLocaleString('en-IN',{maximumFractionDigits:0})}</span><span style="color:${sc};font-weight:700">${b.pct.toFixed(0)}%</span></div></div>`;
+  }).join('')||'<div class="empty">No budgets set</div>';
+}
+
+// ── Recurring ─────────────────────────────────────────────────────────────
+async function addRecurring(e){e.preventDefault();const body={name:document.getElementById('recName').value,amount:document.getElementById('recAmt').value,category:document.getElementById('recCat').value,frequency:document.getElementById('recFreq').value,start:document.getElementById('recStart').value,notes:document.getElementById('recNotes').value};const res=await fetch('/api/recurring',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(res.ok){toast('✅ Recurring added!');loadRecurring();document.getElementById('recName').value='';document.getElementById('recAmt').value='';}}
+async function applyRecurring(){await fetch('/api/recurring/apply',{method:'POST'});toast('▶ Applied!');loadExpenses();loadDashboard();}
+async function loadRecurring(){
+  const items=await fetch('/api/recurring').then(r=>r.json());
+  const s=currencySymbol(currentCurrency);
+  document.getElementById('recurringList').innerHTML=items.map(r=>`
+    <div class="rec-item">
+      <div class="rec-left"><div class="rec-name">${r.name}</div><div class="rec-meta">${r.category} · ${r.frequency}</div><div class="rec-meta">Next due: <strong>${r.next_due}</strong></div></div>
+      <div class="rec-right"><div class="rec-amt">${s}${Number(r.amount).toLocaleString('en-IN',{maximumFractionDigits:0})}</div><button class="btn-icon" onclick="deleteRecurring('${r.id}')">🗑️</button></div>
+    </div>`).join('')||'<div class="empty">No recurring expenses</div>';
+}
+async function deleteRecurring(id){if(!confirm('Delete this rule?'))return;await fetch(`/api/recurring/${id}`,{method:'DELETE'});toast('🗑️ Deleted');loadRecurring();}
+
+// ── Settings ──────────────────────────────────────────────────────────────
+function toggleKeyVis(){const inp=document.getElementById('apiKeyInput');inp.type=inp.type==='password'?'text':'password';document.getElementById('eyeBtn').textContent=inp.type==='password'?'👁️':'🙈';}
+async function saveApiKey(){
+  const key=document.getElementById('apiKeyInput').value.trim();
+  await fetch('/api/chat/key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});
+  toast('✅ API key saved!');
+}
+async function testApiKey(){
+  const key=document.getElementById('apiKeyInput').value.trim();
+  if(!key){toast('Enter an API key first','error');return;}
+  await saveApiKey();
+  const el=document.getElementById('keyStatus');
+  el.style.display='block';el.style.background='var(--bg2)';el.style.color='var(--text2)';el.textContent='Testing key...';
+  const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Reply with exactly: "Gemini is connected!" — nothing else.',history:[]})});
+  const d=await res.json();
+  if(d.reply){el.style.background='rgba(45,158,107,.1)';el.style.color='#2D9E6B';el.textContent='✅ Key works! AI is ready to use.';}
+  else{el.style.background='rgba(192,57,43,.1)';el.style.color='var(--red)';el.textContent='❌ '+(d.error||'Key failed');}
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// AI CHATBOT
+// ════════════════════════════════════════════════════════════════════════
+function toggleChat(){
+  chatOpen=!chatOpen;
+  document.getElementById('chatPanel').classList.toggle('open',chatOpen);
+  document.getElementById('chatOverlay').classList.toggle('show',chatOpen);
+  if(chatOpen)setTimeout(()=>document.getElementById('chatInput').focus(),300);
+}
+function clearChat(){
+  chatHistory=[];
+  document.getElementById('chatMessages').innerHTML=`
+    <div class="chat-welcome">
+      <div class="welcome-icon">✨</div>
+      <div class="welcome-title">Chat cleared! Ask me anything.</div>
+      <div class="suggestions">
+        <button class="suggestion" onclick="sendSuggestion(this)">How much did I spend this month?</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Which category costs me the most?</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Give me saving tips based on my spending</button>
+      </div>
+    </div>`;
+}
+function sendSuggestion(btn){
+  document.getElementById('chatInput').value=btn.textContent;
+  sendMessage();
+}
+function handleChatKey(e){
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}
+}
+function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px';}
+
+function appendMessage(role,content){
+  const msgs=document.getElementById('chatMessages');
+  // Remove welcome on first message
+  const welcome=msgs.querySelector('.chat-welcome');
+  if(welcome)welcome.remove();
+
+  const div=document.createElement('div');
+  div.className=`chat-msg chat-msg-${role}`;
+
+  if(role==='assistant'){
+    // Render markdown-like formatting
+    const formatted=content
+      .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g,'<em>$1</em>')
+      .replace(/`(.*?)`/g,'<code>$1</code>')
+      .replace(/\n\n/g,'</p><p>')
+      .replace(/\n/g,'<br>')
+      .replace(/^- /gm,'• ');
+    div.innerHTML=`<div class="chat-bubble"><p>${formatted}</p></div>`;
+  } else {
+    div.innerHTML=`<div class="chat-bubble">${content}</div>`;
+  }
+  msgs.appendChild(div);
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+function appendTyping(){
+  const msgs=document.getElementById('chatMessages');
+  const div=document.createElement('div');
+  div.className='chat-msg chat-msg-assistant';
+  div.id='typingIndicator';
+  div.innerHTML='<div class="chat-bubble typing"><span></span><span></span><span></span></div>';
+  msgs.appendChild(div);
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+async function sendMessage(){
+  const input=document.getElementById('chatInput');
+  const msg=input.value.trim();
+  if(!msg)return;
+  input.value='';input.style.height='auto';
+
+  appendMessage('user',msg);
+  appendTyping();
+
+  const btn=document.getElementById('sendBtn');
+  btn.disabled=true;
+  document.getElementById('chatStatus').textContent='Thinking...';
+
+  const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message:msg,history:chatHistory})});
+  const data=await res.json();
+
+  document.getElementById('typingIndicator')?.remove();
+  btn.disabled=false;
+  document.getElementById('chatStatus').textContent='Powered by Gemini 2.0 Flash';
+
+  if(data.reply){
+    appendMessage('assistant',data.reply);
+    chatHistory.push({role:'user',content:msg});
+    chatHistory.push({role:'assistant',content:data.reply});
+    if(chatHistory.length>20)chatHistory=chatHistory.slice(-20);
+  } else {
+    appendMessage('assistant','⚠️ '+(data.error||'Something went wrong. Check your API key in Settings.'));
+  }
+}
+</script>
+</body>
+</html>
